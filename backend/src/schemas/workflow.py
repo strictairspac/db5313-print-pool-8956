@@ -15,3 +15,7 @@ class CaseForm(BaseModel):
 
 class ReviewForm(BaseModel):
     note: str = Field(min_length=1, max_length=500)
+
+
+class ReceiptForm(BaseModel):
+    received_by: str | None = Field(default=None, max_length=40)

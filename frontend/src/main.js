@@ -53,7 +53,7 @@ async function refresh() {
     <div class="workspace"><nav aria-label="业务模块">${navigation}</nav><main><div id="message" role="alert"></div>${pages[page](state,id)}</main></div>`;
   document.getElementById('logout').addEventListener('click',()=>{setSession(null); void refresh();});
   if (page==='editor') bindEditor(state, api, fail);
-  if (page==='evidence') bindEvidence(api, refresh, fail);
+  if (page==='evidence') bindEvidence(state, api, refresh, fail);
   if (page==='runs') {
     document.getElementById('refresh').addEventListener('click', refresh);
     if (state.runs.some(row=>['queued','running'].includes(row.status))) timer=setTimeout(refresh,1000);

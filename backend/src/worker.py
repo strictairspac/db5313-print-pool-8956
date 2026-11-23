@@ -1,13 +1,15 @@
 import logging
 from pathlib import Path
 from threading import Event, Thread
-from time import sleep
+from time import monotonic, sleep
 
 from src.config.settings import ARTIFACTS, cache, engine
+from src.services import handovers
 from src.services.domain import solve
 from src.services.workflow import claim, finish
 
 HEARTBEAT = Path(ARTIFACTS) / 'worker-heartbeat'
+RETRY_INTERVAL = 20
 
 
 def heartbeat(stop):
@@ -16,12 +18,25 @@ def heartbeat(stop):
         stop.wait(2)
 
 
+def retry_handovers(last):
+    """定期重发未收到回执的队首批次，补打系统恢复后自动续传。"""
+    if monotonic() - last < RETRY_INTERVAL:
+        return last
+    try:
+        handovers.retry_pending()
+    except Exception:
+        logging.exception('Handover retry failed')
+    return monotonic()
+
+
 def work():
     HEARTBEAT.unlink(missing_ok=True)
+    last_retry = monotonic()
     while True:
         try:
             job = claim()
             HEARTBEAT.touch()
+            last_retry = retry_handovers(last_retry)
             if not job:
                 cache.brpop('worker:wake', timeout=1)
                 continue

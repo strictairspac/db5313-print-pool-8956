@@ -1,5 +1,5 @@
 from sqlalchemy import (JSON, Column, ForeignKey, Integer, MetaData, String,
-                        Table, Text)
+                        Table, Text, UniqueConstraint)
 
 schema = MetaData()
 users = Table('accounts', schema,
@@ -32,6 +32,24 @@ evidence = Table('business_evidence', schema,
     Column('reviewer', String(40)),
     Column('review_note', String(500)),
     Column('reviewed_at', String(32)))
+handover_lanes = Table('handover_lanes', schema,
+    Column('outlet', String(64), primary_key=True),
+    Column('last_order', Integer, nullable=False))
+handover_batches = Table('handover_batches', schema,
+    Column('id', Integer, primary_key=True),
+    Column('number', String(40), nullable=False, unique=True),
+    Column('evidence_id', ForeignKey('business_evidence.id'), nullable=False, index=True),
+    Column('outlet', String(64), nullable=False, index=True),
+    Column('order_seq', Integer, nullable=False),
+    Column('state', String(20), nullable=False, index=True),
+    Column('tickets', JSON, nullable=False),
+    Column('ticket_count', Integer, nullable=False),
+    Column('created_at', String(32), nullable=False),
+    Column('dispatched_at', String(32)),
+    Column('received_at', String(32)),
+    Column('received_by', String(40)),
+    UniqueConstraint('evidence_id', 'outlet', name='uq_handover_evidence_outlet'),
+    UniqueConstraint('outlet', 'order_seq', name='uq_handover_outlet_order'))
 audit = Table('audit_events', schema,
     Column('id', Integer, primary_key=True),
     Column('actor', String(40), nullable=False),

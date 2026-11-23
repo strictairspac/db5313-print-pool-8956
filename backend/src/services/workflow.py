@@ -7,7 +7,7 @@ from sqlalchemy import and_, or_, select
 from src.config.settings import cache, engine
 from src.constants.workflow import Status
 from src.models.tables import audit, cases, evidence, runs
-from src.services import domain
+from src.services import domain, handovers
 from src.utils.encoding import canonical
 from src.utils.time import utc_time
 
@@ -94,11 +94,21 @@ def review(identity, note, actor):
     note = note.strip()
     if not note:
         raise HTTPException(422, '复核意见不能为空')
-    with engine.begin() as conn:
+    with engine.connect() as conn:
+        row = found(conn, evidence, identity)
+    # 先按网点取锁再开事务：同一网点的签署按生效顺序排队，提交后下一笔才分配顺序。
+    with handovers.lanes_lock(handovers.evidence_outlets(row['report'])), engine.begin() as conn:
         found(conn, evidence, identity)
         count = conn.execute(evidence.update().where(evidence.c.id == identity, evidence.c.reviewed_at.is_(None))
                             .values(review_note=note, reviewer=actor, reviewed_at=utc_time())).rowcount
         if count != 1:
             raise HTTPException(409, '该证据已经复核')
+        row.update(review_note=note, reviewer=actor, reviewed_at=utc_time())
+        # 签署与待交接记录同一事务提交：签署成功即留下交接凭据。
+        created = handovers.create_for_evidence(conn, row)
         log(conn, actor, 'review', identity)
-        return found(conn, evidence, identity)
+        result = found(conn, evidence, identity)
+    # 投递在签署提交之后尽力进行，补打系统断线不回滚签署，也不影响返回值。
+    dispatched = handovers.dispatch_evidence(identity)
+    result['handovers'] = {'created': created, 'dispatch': dispatched}
+    return result
